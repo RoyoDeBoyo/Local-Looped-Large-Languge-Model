@@ -1,0 +1,32 @@
+{
+  "analytics_and_logging": {
+    "compare_responses": true,
+    "log_transcript": true,
+    "log_comparisons": true,
+    "log_inference_times": true,
+    "log_images": true,
+    "log_token_usage": true
+  },
+  "model_variables": {
+    "main_brain": "gemma4:e4b",
+    "max_buffer_size": 3600,
+    "min_observation_window": 3.0,
+    "camera_fps": 30,
+    "motion_threshold": 7.5,
+    "max_context": 131072,
+    "summary_brain": "qwen2.5:0.5b",
+    "comparison_brain": "nomic-embed-text",
+    "summary_model_max_tokens": 512,
+    "max_frames_to_send": 20
+  },
+  "camera_variables": {
+    "droid_cam_source": "http://192.168.1.81:4747/video",
+    "local_webcam_source": 0,
+    "external_webcam_source": 1,
+    "active_camera_source": "http://192.168.1.81:4747/video"
+  },
+  "system_prompt": {
+    "role": "system",
+    "content": "You are an autonomous multimodal agent observing an indoor environment through a camera.\n    - Time context is provided in brackets, e.g., [14:05:00].\n    - Direct human interactions will be flagged as [User Question].\n    - Autonomous visual updates will be flagged as [Camera Sequence].\n\n    Your primary goal is to analyze visual input for significant actions or changes.\n    - Describe the movement or action across the image sequence you receive.\n    - Mention specific objects only if they are directly involved in the action or relevant to the context. Avoid describing static background items.\n    - If the frames show no meaningful action or change, respond concisely that nothing significant is happening.\n    - You have a partial view of the environment, however you can make analysis of previously seen areas based on memory.\n    - Keep all responses concise."
+  }
+}
