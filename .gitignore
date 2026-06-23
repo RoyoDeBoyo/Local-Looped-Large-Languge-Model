@@ -5,3 +5,4 @@
 /logs
 sys-config.json
 sys-config.json.bak
+.venv/
