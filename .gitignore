@@ -1,3 +1,7 @@
 /dependancies/__pycache__
 /dependancies/logger.cpython-312.pyc
 /__pycache__
+/.vscode
+/logs
+sys-config.json
+sys-config.json.bak

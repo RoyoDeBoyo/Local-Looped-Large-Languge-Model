@@ -9,19 +9,23 @@ import numpy as np
 import collections
 import os
 import json
+import openai
+import anthropic
+from google import genai
+from google.genai import types
 
 # suppress Qt font warnings
 os.environ["QT_LOGGING_RULES"] = "*=false"
 
 # Load config from json
-with open('config.json', 'r') as f:
+with open('sys-config.json', 'r') as f:
     config = json.load(f)
 
 model_cfg = config['model_variables']
 cam_cfg = config['camera_variables']
 SYSTEM_PROMPT = config['system_prompt']
 
-MAIN_BRAIN = model_cfg['main_brain']
+
 MAX_BUFFER_SIZE = model_cfg['max_buffer_size']
 MIN_OBSERVATION_WINDOW = model_cfg['min_observation_window']
 CAMERA_FPS = model_cfg['camera_fps']
@@ -32,6 +36,62 @@ COMPARISON_BRAIN = model_cfg['comparison_brain']
 SUMMARY_MODEL_MAX_TOKENS = model_cfg['summary_model_max_tokens']
 MAX_FRAMES_TO_SEND = model_cfg['max_frames_to_send']
 ACTIVE_CAMERA_SOURCE = cam_cfg['active_camera_source']
+
+SUPPORTED_PROVIDERS = {
+    'openai': {'key': model_cfg.get('openai_api_key', ""), 'base_url': None},
+    'anthropic': {'key': model_cfg.get('anthropic_api_key', "")},
+    'gemini': {'key': model_cfg.get('gemini_api_key', "")},
+    'groq': {'key': model_cfg.get('groq_api_key', ""), 'base_url': 'https://api.groq.com/openai/v1'},
+    'together': {'key': model_cfg.get('together_api_key', ""), 'base_url': 'https://api.together.xyz/v1'},
+    'openrouter': {'key': model_cfg.get('openrouter_api_key', ""), 'base_url': 'https://openrouter.ai/api/v1'},
+    'xai': {'key': model_cfg.get('xai_api_key', ""), 'base_url': 'https://api.x.ai/v1'},
+    'deepseek': {'key': model_cfg.get('deepseek_api_key', ""), 'base_url': 'https://api.deepseek.com/v1'}
+}
+
+active_providers = [name for name, info in SUPPORTED_PROVIDERS.items() if info.get('key')]
+
+print("\n\033[96m[System] Select an AI Provider for the Main Brain:\033[0m")
+print("  0: local (ollama)")
+
+for idx, provider_name in enumerate(active_providers, 1):
+    print(f"  {idx}: {provider_name}")
+
+selected_idx = -1
+while selected_idx < 0 or selected_idx > len(active_providers):
+    try:
+        user_input = input("\033[96mEnter the number of your choice (default 0): \033[0m")
+        if user_input.strip() == "":
+            selected_idx = 0
+        else:
+            selected_idx = int(user_input)
+            if selected_idx < 0 or selected_idx > len(active_providers):
+                print("\033[91mInvalid choice. Please enter a valid number.\033[0m")
+    except ValueError:
+        print("\033[91mInvalid input. Please enter a number.\033[0m")
+
+active_provider = active_providers[selected_idx - 1] if selected_idx > 0 else None
+
+if active_provider:
+    default_model = model_cfg.get(f"{active_provider}_default_model", "")
+    model_input = input(f"\033[96mEnter model name for {active_provider} (default '{default_model}'): \033[0m").strip()
+    MAIN_BRAIN = model_input if model_input else default_model
+else:
+    default_model = model_cfg.get('main_brain', 'CHANGE ME')
+    model_input = input(f"\033[96mEnter local Ollama model name (default '{default_model}'): \033[0m").strip()
+    MAIN_BRAIN = model_input if model_input else default_model
+
+print(f"\033[92m[System] Initializing with MAIN_BRAIN = {MAIN_BRAIN}\033[0m")
+
+api_client = None
+
+if active_provider:
+    provider_info = SUPPORTED_PROVIDERS[active_provider]
+    if active_provider == 'anthropic':
+        api_client = anthropic.Anthropic(api_key=provider_info['key'])
+    elif active_provider == 'gemini':
+        api_client = genai.Client(api_key=provider_info['key'])
+    else:
+        api_client = openai.OpenAI(api_key=provider_info['key'], base_url=provider_info.get('base_url'))
 
 from dependancies.logger import SessionLogger
 from dependancies.gui import launch_input_gui
@@ -53,6 +113,11 @@ gui_thread.start()
 frame_buffer = collections.deque(maxlen=MAX_BUFFER_SIZE)
 camera_stop_event = threading.Event()
 camera_source = ACTIVE_CAMERA_SOURCE
+
+if camera_source == "":
+    camera_source = 0
+elif isinstance(camera_source, str) and camera_source.isdigit():
+    camera_source = int(camera_source)
 
 if isinstance(camera_source, str) and (camera_source.startswith("http") or camera_source.startswith("rtsp")):
     cam_thread = threading.Thread(target=networked_camera_worker, args=(camera_source, frame_buffer, camera_stop_event), daemon=True)
@@ -172,15 +237,103 @@ try:
         # Execute Inference
         inference_start_time = time.time()
         
-        response = ollama.chat(
-            model=MAIN_BRAIN, 
-            messages=messages,
-            options={
-                'num_ctx': MAX_CONTEXT, 
-                'num_gpu': 99,       
-                'num_thread': 8      
-            }
-        )
+        if active_provider == 'anthropic':
+            anthropic_messages = []
+            system_prompt_content = ""
+            for msg in messages:
+                if msg['role'] == 'system':
+                    system_prompt_content = msg['content']
+                elif msg['role'] == 'user':
+                    content = [{"type": "text", "text": msg['content']}]
+                    if 'images' in msg:
+                        for img in msg['images']:
+                            content.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": img
+                                }
+                            })
+                    anthropic_messages.append({"role": "user", "content": content})
+                elif msg['role'] == 'assistant':
+                    anthropic_messages.append({"role": "assistant", "content": msg['content']})
+            
+            response = api_client.messages.create(
+                model=MAIN_BRAIN,
+                system=system_prompt_content,
+                messages=anthropic_messages,
+                max_tokens=4096
+            )
+            agent_reply_original = response.content[0].text.strip()
+            prompt_tokens = response.usage.input_tokens
+            generation_tokens = response.usage.output_tokens
+            
+        elif active_provider == 'gemini':
+            gemini_messages = []
+            system_instruction = ""
+            for msg in messages:
+                if msg['role'] == 'system':
+                    system_instruction = msg['content']
+                elif msg['role'] == 'user':
+                    parts = [types.Part.from_text(text=msg['content'])]
+                    if 'images' in msg:
+                        import base64
+                        for img in msg['images']:
+                            img_bytes = base64.b64decode(img)
+                            parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+                    gemini_messages.append(types.Content(role="user", parts=parts))
+                elif msg['role'] == 'assistant':
+                    gemini_messages.append(types.Content(role="model", parts=[types.Part.from_text(text=msg['content'])]))
+                    
+            config = types.GenerateContentConfig(system_instruction=system_instruction)
+            response = api_client.models.generate_content(
+                model=MAIN_BRAIN, 
+                contents=gemini_messages,
+                config=config
+            )
+            agent_reply_original = response.text
+            prompt_tokens = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') and response.usage_metadata else 0
+            generation_tokens = response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') and response.usage_metadata else 0
+            
+        elif api_client is not None: # All OpenAI-compatible providers
+            openai_messages = []
+            for msg in messages:
+                if msg['role'] == 'system':
+                    openai_messages.append({"role": "system", "content": msg['content']})
+                elif msg['role'] == 'user':
+                    content = [{"type": "text", "text": msg['content']}]
+                    if 'images' in msg:
+                        for img in msg['images']:
+                            content.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{img}"}
+                            })
+                    openai_messages.append({"role": "user", "content": content})
+                elif msg['role'] == 'assistant':
+                    openai_messages.append({"role": "assistant", "content": msg['content']})
+            
+            response = api_client.chat.completions.create(
+                model=MAIN_BRAIN,
+                messages=openai_messages
+            )
+            agent_reply_original = response.choices[0].message.content.strip()
+            prompt_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else 0
+            generation_tokens = response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else 0
+            
+        else:
+            response = ollama.chat(
+                model=MAIN_BRAIN, 
+                messages=messages,
+                options={
+                    'num_ctx': MAX_CONTEXT, 
+                    'num_gpu': 99,       
+                    'num_thread': 8      
+                }
+            )
+            agent_reply_original = response['message']['content'].strip()
+            prompt_tokens = response.get('prompt_eval_count', 0)
+            generation_tokens = response.get('eval_count', 0)
         
         inference_duration = time.time() - inference_start_time
         print(f"\033[93m[Debug] Inference Step Time: {inference_duration:.2f}s\033[0m")
@@ -188,11 +341,8 @@ try:
         if 'images' in messages[-1]:
             del messages[-1]['images']
 
-        agent_reply_original = response['message']['content'].strip()
         agent_reply_final = agent_reply_original
         
-        prompt_tokens = response.get('prompt_eval_count', 0)
-        generation_tokens = response.get('eval_count', 0)
         total_tokens = prompt_tokens + generation_tokens
         print(f"\033[94m[Score] Token Usage: {total_tokens}/{MAX_CONTEXT}\033[0m")
 

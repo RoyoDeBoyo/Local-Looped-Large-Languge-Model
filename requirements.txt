@@ -1,2 +1,5 @@
 ollama==0.6.2
 opencv-python==4.13.0.92
+openai
+anthropic
+google-genai
