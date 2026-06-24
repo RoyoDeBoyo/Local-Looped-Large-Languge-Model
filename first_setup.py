@@ -1,103 +1,18 @@
 import json
 import os
 import shutil
-import sys
-import urllib.request
-import urllib.error
 
-def get_provider_models(provider, api_key):
-    url = ""
-    headers = {}
-    if provider == "openai":
-        url = "https://api.openai.com/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "anthropic":
-        url = "https://api.anthropic.com/v1/models"
-        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-    elif provider == "gemini":
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    elif provider == "groq":
-        url = "https://api.groq.com/openai/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "together":
-        url = "https://api.together.xyz/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "openrouter":
-        url = "https://openrouter.ai/api/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "xai":
-        url = "https://api.x.ai/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "deepseek":
-        url = "https://api.deepseek.com/models"
-        headers = {"Authorization": f"Bearer {api_key}"}
-    else:
-        return []
-
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            if provider == "gemini":
-                models = []
-                for m in data.get("models", []):
-                    name = m.get("name", "")
-                    if name.startswith("models/"):
-                        name = name[7:]
-                    models.append(name)
-                return models
-            elif isinstance(data, list):
-                return [m.get("id") for m in data if "id" in m]
-            else:
-                return [m.get("id") for m in data.get("data", []) if "id" in m]
-    except Exception:
-        return []
+from dependancies.external_api import get_local_models, get_provider_models, display_and_select_model
 
 def main():
     print("\033[96m[System] Welcome to the Local-Looped-Large-Language-Model First Setup!\033[0m\n")
 
-    models_list = []
-    try:
-        import ollama
-        try:
-            ollama_models = ollama.list()
-            if hasattr(ollama_models, 'models'):
-                models_list = [getattr(m, 'model', getattr(m, 'name', '')) for m in ollama_models.models]
-            else:
-                models_list = [m.get('name', '') for m in ollama_models.get('models', [])]
-        except Exception as e:
-            print(f"\033[93m[Warning] Could not connect to Ollama: {e}\033[0m")
-    except ImportError:
-        print("\033[93m[Warning] Ollama Python package not found.\033[0m")
+    models_list = get_local_models()
 
-    def select_local_model(prompt_text, default_choice="1"):
-        if not models_list:
-            return ""
-        print(f"\n\033[96m{prompt_text}\033[0m")
-        print("  0: Skip local model (Use external API / None)")
-        for idx, model_name in enumerate(models_list, 1):
-            print(f"  {idx}: {model_name}")
-        
-        selected_idx = -1
-        while selected_idx < 0 or selected_idx > len(models_list):
-            try:
-                user_input = input(f"\033[96mEnter the number of your choice (default {default_choice}): \033[0m")
-                if user_input.strip() == "":
-                    selected_idx = int(default_choice)
-                else:
-                    selected_idx = int(user_input)
-                    if selected_idx < 0 or selected_idx > len(models_list):
-                        print("\033[91mInvalid choice. Please enter a valid number.\033[0m")
-            except ValueError:
-                print("\033[91mInvalid input. Please enter a number.\033[0m")
-        
-        if selected_idx == 0:
-            return ""
-        return models_list[selected_idx - 1]
-
-    local_model_default = select_local_model("Select a default local (Ollama) model for the main brain:", "1" if models_list else "0")
-    summary_model_default = select_local_model("Select a default local (Ollama) model for the summary brain:", "0")
-    comparison_model_default = select_local_model("Select a default local (Ollama) model for the comparison brain:", "0")
+    default_choice = models_list[0] if models_list else ""
+    local_model_default = display_and_select_model(models_list, default_model=default_choice, prompt_text="Select a default local (Ollama) model for the main brain:", allow_skip=True)
+    summary_model_default = display_and_select_model(models_list, default_model=default_choice, prompt_text="Select a default local (Ollama) model for the summary brain:", allow_skip=True)
+    comparison_model_default = display_and_select_model(models_list, default_model=default_choice, prompt_text="Select a default local (Ollama) model for the comparison brain:", allow_skip=True)
 
     providers = [
         "openai",
@@ -124,23 +39,7 @@ def main():
             print(f"\033[96mFetching available models for {provider}...\033[0m")
             available_models = get_provider_models(provider, key)
             if available_models:
-                print(f"\033[96mSelect a default model for {provider}:\033[0m")
-                for idx, model_name in enumerate(available_models, 1):
-                    print(f"  {idx}: {model_name}")
-                
-                selected_idx = -1
-                while selected_idx < 1 or selected_idx > len(available_models):
-                    try:
-                        user_input = input(f"\033[96mEnter the number of your choice (default 1): \033[0m")
-                        if user_input.strip() == "":
-                            selected_idx = 1
-                        else:
-                            selected_idx = int(user_input)
-                            if selected_idx < 1 or selected_idx > len(available_models):
-                                print("\033[91mInvalid choice. Please enter a valid number.\033[0m")
-                    except ValueError:
-                        print("\033[91mInvalid input. Please enter a number.\033[0m")
-                default_model = available_models[selected_idx - 1]
+                default_model = display_and_select_model(available_models, prompt_text=f"Select a default model for {provider}:")
             else:
                 print(f"\033[93mCould not automatically fetch models. Please enter manually.\033[0m")
                 default_model = input(f"\033[94mEnter default model name for {provider} (e.g. claude-3-opus-20240229, gpt-4o): \033[0m").strip()
@@ -179,7 +78,7 @@ def main():
         },
         "system_prompt": {
             "role": "system",
-            "content": "You are an autonomous multimodal agent observing an indoor environment through a camera.\n    - Time context is provided in brackets, e.g., [14:05:00].\n    - Direct human interactions will be flagged as [User Question].\n    - Autonomous visual updates will be flagged as [Camera Sequence].\n\n    Your primary goal is to analyze visual input for significant actions or changes.\n    - Describe the movement or action across the image sequence you receive.\n    - Mention specific objects only if they are directly involved in the action or relevant to the context. Avoid describing static background items.\n    - If the frames show no meaningful action or change, respond concisely that nothing significant is happening.\n    - You have a partial view of the environment, however you can make analysis of previously seen areas based on memory.\n    - Keep all responses concise."
+            "content": "You are an autonomous multimodal agent observing an indoor environment through a camera.\nTime context is provided in brackets, e.g., [14:05:00].\nDirect human interactions will be flagged as [User Question].\nAutonomous visual updates will be flagged as [Camera Sequence].\n\nYour primary goal is to be a helpful assistant by using all context available to you. This includes both the text inputs and the visual inputs if relevant.\nRefrain from using deep reasoning as this will impact your context. If a question is simple and does not require deep reasoning, answer it directly. If the problem does require deep reasoning, you should reason about the problem before answering. This will give you a better understanding of the situation and allow you to provide a more accurate response.\nMention specific objects only if they are directly involved in the action or relevant to the context. Avoid describing static background items.\nIf the frames show no meaningful action or change, respond concisely that nothing significant is happening.\nYou have a partial view of the environment, however you can make analysis of previously seen areas based on memory.\nMake sure all responses only contain relevant information.\nRefrain from giving long explinations with examples and only output what is necessary."
         }
     }
 

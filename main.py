@@ -14,6 +14,15 @@ import anthropic
 from google import genai
 from google.genai import types
 
+# Dependancy imports
+from dependancies.logger import SessionLogger
+from dependancies.gui import launch_input_gui
+from dependancies.vision import calculate_visual_difference
+from dependancies.memory import cull_old_memory
+from dependancies.nlp import calculate_semantic_similarity
+from dependancies.networked_camera import networked_camera_worker
+from dependancies.physical_camera import physical_camera_worker
+
 # suppress Qt font warnings
 os.environ["QT_LOGGING_RULES"] = "*=false"
 
@@ -75,74 +84,24 @@ if active_provider:
     default_model = model_cfg.get(f"{active_provider}_default_model", "")
     api_key = SUPPORTED_PROVIDERS[active_provider]['key']
     
-    from first_setup import get_provider_models
+    from dependancies.external_api import get_provider_models, display_and_select_model
     print(f"\n\033[96mFetching available models for {active_provider}...\033[0m")
     available_models = get_provider_models(active_provider, api_key)
     
     if available_models:
-        print(f"\033[96mSelect a model for {active_provider}:\033[0m")
-        default_idx = 1
-        if default_model in available_models:
-            default_idx = available_models.index(default_model) + 1
-            
-        for idx, model_name in enumerate(available_models, 1):
-            print(f"  {idx}: {model_name}")
-            
-        selected_idx = -1
-        while selected_idx < 1 or selected_idx > len(available_models):
-            try:
-                display_default = default_model if default_model else available_models[default_idx-1]
-                user_input = input(f"\033[96mEnter the number of your choice (default {default_idx} - {display_default}): \033[0m").strip()
-                if user_input == "":
-                    selected_idx = default_idx
-                else:
-                    selected_idx = int(user_input)
-                    if selected_idx < 1 or selected_idx > len(available_models):
-                        print("\033[91mInvalid choice. Please enter a valid number.\033[0m")
-            except ValueError:
-                print("\033[91mInvalid input. Please enter a number.\033[0m")
-        
-        MAIN_BRAIN = available_models[selected_idx - 1]
+        MAIN_BRAIN = display_and_select_model(available_models, default_model=default_model, prompt_text=f"Select a model for {active_provider}:")
     else:
         model_input = input(f"\033[96mEnter model name for {active_provider} (default '{default_model}'): \033[0m").strip()
         MAIN_BRAIN = model_input if model_input else default_model
 else:
     default_model = model_cfg.get('main_brain', 'CHANGE ME')
-    try:
-        import ollama
-        ollama_models = ollama.list()
-        if hasattr(ollama_models, 'models'):
-            available_models = [getattr(m, 'model', getattr(m, 'name', '')) for m in ollama_models.models]
-        else:
-            available_models = [m.get('name', '') for m in ollama_models.get('models', [])]
-            
-        if available_models:
-            print(f"\n\033[96mSelect a local Ollama model:\033[0m")
-            default_idx = 1
-            if default_model in available_models:
-                default_idx = available_models.index(default_model) + 1
-                
-            for idx, model_name in enumerate(available_models, 1):
-                print(f"  {idx}: {model_name}")
-                
-            selected_idx = -1
-            while selected_idx < 1 or selected_idx > len(available_models):
-                try:
-                    display_default = default_model if default_model else available_models[default_idx-1]
-                    user_input = input(f"\033[96mEnter the number of your choice (default {default_idx} - {display_default}): \033[0m").strip()
-                    if user_input == "":
-                        selected_idx = default_idx
-                    else:
-                        selected_idx = int(user_input)
-                        if selected_idx < 1 or selected_idx > len(available_models):
-                            print("\033[91mInvalid choice. Please enter a valid number.\033[0m")
-                except ValueError:
-                    print("\033[91mInvalid input. Please enter a number.\033[0m")
-            MAIN_BRAIN = available_models[selected_idx - 1]
-        else:
-            model_input = input(f"\033[96mEnter local Ollama model name (default '{default_model}'): \033[0m").strip()
-            MAIN_BRAIN = model_input if model_input else default_model
-    except Exception:
+    from dependancies.external_api import get_local_models, display_and_select_model
+    
+    available_models = get_local_models()
+        
+    if available_models:
+        MAIN_BRAIN = display_and_select_model(available_models, default_model=default_model, prompt_text="\nSelect a local Ollama model:")
+    else:
         model_input = input(f"\033[96mEnter local Ollama model name (default '{default_model}'): \033[0m").strip()
         MAIN_BRAIN = model_input if model_input else default_model
 
@@ -159,14 +118,7 @@ if active_provider:
     else:
         api_client = openai.OpenAI(api_key=provider_info['key'], base_url=provider_info.get('base_url'))
 
-from dependancies.logger import SessionLogger
-from dependancies.gui import launch_input_gui
-from dependancies.vision import calculate_visual_difference
-from dependancies.memory import cull_old_memory
-from dependancies.nlp import calculate_semantic_similarity
 
-from dependancies.networked_camera import networked_camera_worker
-from dependancies.physical_camera import physical_camera_worker
 
 input_queue = queue.Queue()
 session_start_dt = datetime.datetime.now()

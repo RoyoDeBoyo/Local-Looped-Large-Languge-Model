@@ -3,3 +3,4 @@ opencv-python==4.13.0.92
 openai
 anthropic
 google-genai
+requests
