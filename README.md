@@ -1,38 +1,66 @@
-# Local Looped Large Languge Model
- A looped version of modern ai models that can run locally on your systems. This is an extension of the AI agent architecture. This project also supports third party API's but is primarly designed to be run on your own device.
+# Local Looped Large Language Model (LLLLM)
 
-# Local Looped LLM (LLLLM)
+A looped architecture for modern AI models that can run locally on your system or integrate with external third-party APIs. This project extends standard AI agent architectures by creating a persistent, looping multimodal observer. While it supports external providers, it is primarily designed to run locally on your own device for maximum privacy and control.
+
 ## Features
 
-This LLLLM features multiple AI agents working in tandem. A large multimodal model acts as the "brain" with a summary model and a grading model working to reduce context length.
+- **Multi-Agent Architecture**: Features multiple AI agents working in tandem. A large multimodal model acts as the "Main Brain," while supporting models ("Summary Brain", "Comparison Brain", and "Vision Brain") work continuously in the background to reduce context length, handle memory, and pre-process observations.
+- **Provider Agnostic**: Supports local inference via Ollama, as well as external cloud providers including OpenAI, Anthropic, Google Gemini, Groq, Together, OpenRouter, X.AI, and DeepSeek.
+- **Vision & Memory Management**: Features real-time camera tracking, destructive image compression for token optimization, and intelligent memory culling to keep the context window performant over long sessions.
+- **Interactive Test Suite**: Includes a comprehensive suite of interactive tests with synthetic data to evaluate compression algorithms, agent prompts, and swappable model performance.
 
 ## Prerequisites
 
-Make sure ollama is installed and running.
-For the current `multimodal_inference.py` file, `gemma4:e4b` is being used as the main brain, but feel free to change this to another multimodal model. `qwen2.5:0.5b` is being used as the summary model, this model should be smaller than the main brain and run as fast as possible to give more CPU and GPU time to the larger multimodal model. `nomic-embed-text` is being used as the comarison model. 
+- **Python 3.8+**
+- **Ollama**: Required if you plan to run models locally. Make sure Ollama is installed and running on your system.
+- **Camera**: A camera is required for the main multimodal loop. You can use a local webcam or [DroidCam](https://droidcam.app/) on a mobile device.
 
 ## Installation
 
-```
-cd looped-llm
+```bash
+git clone <repository_url>
+cd Local-Looped-Large-Languge-Model
 python -m venv .venv
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Run `ollama pull <model>` to get your models. To use default models run these commands
-
+### Local Models (Ollama)
+If using local models, pull your desired models before running. For example, using the default configurations:
+```bash
+ollama pull llama3.2:1b
+ollama pull minicpm-v4.6:latest
+ollama pull nomic-embed-text:latest
 ```
-ollama pull gemma4:e4b
-ollama pull qwen2.5:0.5b
-ollama pull nomic-embed-text
-```
 
-A camera is required for this project. I am using [DroidCam](https://droidcam.app/) on a mobile phone. Make sure you are on the same local network as your computer and then put the ip address displayed in the `camera_source` variable with this format. `"http://IP_ADDRESS:PORT/video"`
+## Configuration
+
+All system configurations, model variables, camera sources, and API keys are managed in `sys-config.json`. 
+- **API Keys**: Add your external provider keys (e.g., `openai_api_key`) to `sys-config.json` to enable them.
+- **Camera Settings**: Update `camera_variables` in `sys-config.json`. For DroidCam, use the format `"http://IP_ADDRESS:PORT/video"`.
 
 ## Usage
 
-For stronger computers variables such as `MAX_FRAMES_TO_SEND`, `MIN_OBSERVATION_WINDOW`, `MAX_BUFFER_SIZE` can be changed to get better results. The text input stream is provided through a tk inter text box and runs on a seperate thread.
-Logging can be turned on and off globaly or module by module. Images are stored in black and white to reduce overall file size.
+Start the main looped agent:
+```bash
+python main.py
+```
+Upon startup, the system will interactively prompt you to select the AI provider and specific model you wish to use for the Main Brain and other supporting components.
+
+For stronger computers, variables in `sys-config.json` such as `max_frames_to_send`, `min_observation_window`, and `max_buffer_size` can be adjusted to get better results.
+
+## Testing
+
+This project includes a comprehensive interactive test suite to validate functionality and fine-tune model configurations. The tests use synthetic data stored in the `synthetic_data/` folder.
+
+To run the interactive tests, simply execute them from the terminal:
+- **Vision Compression**: `python tests/test_vision_compression.py`
+- **Vision Analysis (Swappable Models)**: `python tests/test_vision_analysis.py`
+- **Agent Prompts**: `python tests/test_agents.py`
+- **Memory Culling**: `python tests/test_memory_static.py`
+- **NLP Similarity**: `python tests/test_nlp.py`
+
+When running the tests, follow the interactive command-line prompts. You can leave inputs blank to automatically run the tests using the provided synthetic datasets.
 
 ## License
 

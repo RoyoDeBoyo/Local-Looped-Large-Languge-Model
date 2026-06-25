@@ -1,6 +1,5 @@
-/dependancies/__pycache__
-/dependancies/logger.cpython-312.pyc
-/__pycache__
+__pycache__/
+*.py[cod]
 /.vscode
 /logs
 sys-config.json
