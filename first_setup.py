@@ -1,9 +1,31 @@
-import json
-import os
-import shutil
-import torch
+import sys
+import subprocess
+
+try:
+    import json
+    import os
+    import shutil
+    import torch
+except ImportError:
+    choice = input("required packages not installed, would you like to install them now? (y/n): ").strip().lower()
+    if choice in ['y', 'yes']:
+        print("Installing packages from requirements.txt...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+            print("Installation complete. Continuing...")
+            import json
+            import os
+            import shutil
+            import torch
+        except Exception as e:
+            print(f"Failed to install packages: {e}")
+            sys.exit(1)
+    else:
+        print("Exiting...")
+        sys.exit(0)
 
 from dependancies.external_api import get_local_models, get_provider_models, display_and_select_model
+
 
 def main():
     print("\033[96m[System] Welcome to the Local-Looped-Large-Language-Model First Setup!\033[0m\n")

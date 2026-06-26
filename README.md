@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ### Local Models (Ollama)
 If using local models, pull your desired models before running. For example, using the default configurations:
 ```bash
-ollama pull llama3.2:1b
+ollama pull qwen2.5:0.5b
 ollama pull minicpm-v4.6:latest
 ollama pull nomic-embed-text:latest
 ```
